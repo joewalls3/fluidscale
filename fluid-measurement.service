@@ -1,0 +1,14 @@
+[Unit]
+Description=Fluid Measurement Web Service
+After=network.target
+
+[Service]
+ExecStart=/opt/fluid_measurement/fluid_measurement_server
+WorkingDirectory=/opt/fluid_measurement
+StandardOutput=journal
+StandardError=journal
+Restart=always
+User=pi
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fluid Scale</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@300;400;500;600&display=swap">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Fluid Scale</h1>
+        </header>
+
+        <main>
+            <section class="measurement-card">
+                <div class="weight-display">
+                    <div class="fluid-weight" id="fluid-weight-container">
+                        <span id="fluid-weight-value">0.00</span>
+                        <span id="fluid-weight-unit">fl oz</span>
+                    </div>
+                    <div class="weight-label">Fluid</div>
+                </div>
+                
+                <div class="weight-details">
+                    <div class="weight-item">
+                        <div class="weight-value">
+                            <span id="total-weight-value">0.00</span>
+                            <span id="total-weight-unit">g</span>
+                        </div>
+                        <div class="weight-label">Total</div>
+                    </div>
+                    
+                    <div class="weight-item">
+                        <div class="weight-value">
+                            <span id="container-weight-value">0.00</span>
+                            <span id="container-weight-unit">g</span>
+                        </div>
+                        <div class="weight-label">Container</div>
+                    </div>
+                </div>
+            </section>
+            
+            <section class="history-card">
+                <canvas id="history-chart"></canvas>
+            </section>
+            
+            <section class="controls-card">
+                <div class="button-group">
+                    <button id="tare-button" class="btn">Tare</button>
+                    <button id="unit-toggle-button" class="btn">Change Unit</button>
+                    <button id="reset-container-button" class="btn">Reset Container</button>
+                </div>
+                
+                <div class="input-group">
+                    <input type="number" id="container-weight" placeholder="Container weight in grams">
+                    <button id="set-container-button" class="btn">Set</button>
+                </div>
+            </section>
+        </main>
+        
+        <div class="status-indicator">
+            <div class="status-icon" id="connection-status"></div>
+            <span>Scale</span>
+        </div>
+    </div>
+    
+    <div id="notification"></div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
