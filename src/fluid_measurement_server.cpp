@@ -12,6 +12,9 @@
 #include <fstream>
 #include <cstring>
 
+// Include WiFi setup functionality
+#include "wifi_setup.h"
+
 // Pin definitions for Raspberry Pi (using wiringPi numbering)
 #define DOUT_PIN 9  // GPIO 5 (Pin 29) in BCM is wiringPi 9
 #define CLK_PIN  6  // GPIO 6 (Pin 31) in BCM is wiringPi 6
@@ -177,6 +180,22 @@ static int handle_request(void *cls, struct MHD_Connection *connection,
         MHD_add_response_header(response, "Content-Type", "application/json");
         MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
     }
+    else if (0 == strcmp(url, "/api/set_container")) {
+        const char* weightParam = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "weight");
+        if (weightParam) {
+            try {
+                float weight = std::stof(weightParam);
+                inputWeight = weight;
+                response = MHD_create_response_from_buffer(25, (void*)"\"Container weight set\"", MHD_RESPMEM_MUST_COPY);
+            } catch (...) {
+                response = MHD_create_response_from_buffer(25, (void*)"\"Invalid weight value\"", MHD_RESPMEM_MUST_COPY);
+            }
+        } else {
+            response = MHD_create_response_from_buffer(23, (void*)"\"Missing weight parameter\"", MHD_RESPMEM_MUST_COPY);
+        }
+        MHD_add_response_header(response, "Content-Type", "application/json");
+        MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
+    }
     // Serve static files (HTML, CSS, JS)
     else {
         std::string file_path = "web";
@@ -244,6 +263,13 @@ void measurement_thread() {
 }
 
 int main() {
+    // Check if Wi-Fi is configured
+    if (!is_wifi_configured()) {
+        std::cout << "No Wi-Fi configuration found. Starting setup mode..." << std::endl;
+        start_ap_mode();
+        return 0;
+    }
+    
     // Initialize wiringPi
     if (wiringPiSetup() == -1) {
         std::cerr << "Failed to initialize wiringPi" << std::endl;
