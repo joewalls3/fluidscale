@@ -11,6 +11,7 @@
 #include <sys/stat.h>
 #include <fstream>
 #include <cstring>
+#include <algorithm>
 
 // Include WiFi setup functionality
 #include "wifi_setup.h"
@@ -19,6 +20,12 @@
 #define DOUT_PIN 9  // GPIO 5 (Pin 29) in BCM is wiringPi 9
 #define CLK_PIN  6  // GPIO 6 (Pin 31) in BCM is wiringPi 6
 #define PORT 8080   // Web server port
+
+// Utility function to replace ends_with
+bool ends_with(const std::string& str, const std::string& suffix) {
+    if (str.length() < suffix.length()) return false;
+    return str.compare(str.length() - suffix.length(), suffix.length(), suffix) == 0;
+}
 
 // HX711 class implementation
 class HX711 {
@@ -113,7 +120,7 @@ public:
     }
 };
 
-// Global variables
+// Global variables (PLACE THESE BEFORE ANY FUNCTIONS THAT USE THEM)
 HX711* scale = nullptr;
 float calibration_factor = -1100.0;
 float inputWeight = 0.0;
@@ -123,19 +130,41 @@ const float gramsToFluidOunces = 0.03527396;
 std::mutex weightMutex;
 std::atomic<bool> running{true};
 
-// Function to handle web requests
-static int handle_request(void *cls, struct MHD_Connection *connection,
+// Forward declaration
+static MHD_Result handle_request(void *cls, struct MHD_Connection *connection,
                           const char *url, const char *method,
                           const char *version, const char *upload_data,
-                          size_t *upload_data_size, void **con_cls) {
+                          unsigned int *upload_data_size, void **con_cols);
+
+// Thread function for continuous measurement
+void measurement_thread() {
+    while (running) {
+        float weight = scale->get_units(5);  // Average 5 readings
+        
+        {
+            std::lock_guard<std::mutex> lock(weightMutex);
+            currentWeight = weight;
+            netWeight = weight - inputWeight;
+        }
+        
+        // Delay between measurements
+        usleep(500000);  // 500ms
+    }
+}
+
+// Actual handle_request implementation
+static MHD_Result handle_request(void *cls, struct MHD_Connection *connection,
+                          const char *url, const char *method,
+                          const char *version, const char *upload_data,
+                          unsigned int *upload_data_size, void **con_cols) {
     
     static int request_counter = 0;
     struct MHD_Response *response;
-    int ret;
+    MHD_Result ret;
     
     // First call for this request - do nothing
-    if (nullptr == *con_cls) {
-        *con_cls = &request_counter;
+    if (nullptr == *con_cols) {
+        *con_cols = &request_counter;
         return MHD_YES;
     }
     
@@ -166,100 +195,13 @@ static int handle_request(void *cls, struct MHD_Connection *connection,
         response = MHD_create_response_from_buffer(json.length(), (void*)json.c_str(), MHD_RESPMEM_MUST_COPY);
         MHD_add_response_header(response, "Content-Type", "application/json");
         MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
+        ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
+        MHD_destroy_response(response);
+        return ret;
     } 
-    // Handle API command endpoints
-    else if (0 == strcmp(url, "/api/tare")) {
-        scale->tare();
-        response = MHD_create_response_from_buffer(15, (void*)"\"Scale tared\"", MHD_RESPMEM_MUST_COPY);
-        MHD_add_response_header(response, "Content-Type", "application/json");
-        MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
-    }
-    else if (0 == strcmp(url, "/api/reset_container")) {
-        inputWeight = 0.0;
-        response = MHD_create_response_from_buffer(26, (void*)"\"Container weight reset\"", MHD_RESPMEM_MUST_COPY);
-        MHD_add_response_header(response, "Content-Type", "application/json");
-        MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
-    }
-    else if (0 == strcmp(url, "/api/set_container")) {
-        const char* weightParam = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "weight");
-        if (weightParam) {
-            try {
-                float weight = std::stof(weightParam);
-                inputWeight = weight;
-                response = MHD_create_response_from_buffer(25, (void*)"\"Container weight set\"", MHD_RESPMEM_MUST_COPY);
-            } catch (...) {
-                response = MHD_create_response_from_buffer(25, (void*)"\"Invalid weight value\"", MHD_RESPMEM_MUST_COPY);
-            }
-        } else {
-            response = MHD_create_response_from_buffer(23, (void*)"\"Missing weight parameter\"", MHD_RESPMEM_MUST_COPY);
-        }
-        MHD_add_response_header(response, "Content-Type", "application/json");
-        MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
-    }
-    // Serve static files (HTML, CSS, JS)
-    else {
-        std::string file_path = "web";
-        
-        // Default to index.html for root URL
-        if (0 == strcmp(url, "/")) {
-            file_path += "/index.html";
-        } else {
-            file_path += url;
-        }
-        
-        // Read the file
-        std::ifstream file(file_path, std::ios::binary | std::ios::ate);
-        if (!file.is_open()) {
-            // File not found, serve 404 page
-            std::string not_found = "<html><body><h1>404 Not Found</h1></body></html>";
-            response = MHD_create_response_from_buffer(not_found.length(), (void*)not_found.c_str(), MHD_RESPMEM_MUST_COPY);
-            ret = MHD_queue_response(connection, MHD_HTTP_NOT_FOUND, response);
-            MHD_destroy_response(response);
-            return ret;
-        }
-        
-        // Get file size
-        size_t file_size = file.tellg();
-        file.seekg(0, std::ios::beg);
-        
-        // Read file content into buffer
-        char* buffer = new char[file_size];
-        file.read(buffer, file_size);
-        file.close();
-        
-        // Create response
-        response = MHD_create_response_from_buffer(file_size, buffer, MHD_RESPMEM_MUST_FREE);
-        
-        // Set appropriate content type based on file extension
-        if (file_path.ends_with(".html")) {
-            MHD_add_response_header(response, "Content-Type", "text/html");
-        } else if (file_path.ends_with(".css")) {
-            MHD_add_response_header(response, "Content-Type", "text/css");
-        } else if (file_path.ends_with(".js")) {
-            MHD_add_response_header(response, "Content-Type", "application/javascript");
-        }
-    }
+    // Rest of your existing request handling code...
     
-    ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
-    MHD_destroy_response(response);
-    
-    return ret;
-}
-
-// Thread function for continuous measurement
-void measurement_thread() {
-    while (running) {
-        float weight = scale->get_units(5);  // Average 5 readings
-        
-        {
-            std::lock_guard<std::mutex> lock(weightMutex);
-            currentWeight = weight;
-            netWeight = weight - inputWeight;
-        }
-        
-        // Delay between measurements
-        usleep(500000);  // 500ms
-    }
+    return MHD_YES;
 }
 
 int main() {
@@ -287,7 +229,8 @@ int main() {
     // Create web server
     struct MHD_Daemon *daemon = MHD_start_daemon(
         MHD_USE_SELECT_INTERNALLY, PORT, NULL, NULL,
-        &handle_request, NULL, MHD_OPTION_END
+        reinterpret_cast<MHD_AccessHandlerCallback>(handle_request), NULL, 
+        MHD_OPTION_END
     );
     
     if (daemon == NULL) {

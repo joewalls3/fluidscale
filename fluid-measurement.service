@@ -1,14 +1,86 @@
-[Unit]
-Description=Fluid Measurement Web Service
-After=network.target
+# Compiler settings
+CXX = g++
+CXXFLAGS = -Wall -std=c++17 -O2
 
-[Service]
-ExecStart=/opt/fluid_measurement/fluid_measurement_server
-WorkingDirectory=/opt/fluid_measurement
-StandardOutput=journal
-StandardError=journal
-Restart=always
-User=pi
+# Library dependencies
+LIBS = -lmicrohttpd -pthread -lwiringPi
 
-[Install]
-WantedBy=multi-user.target
+# Directories
+SRC_DIR = src
+WEB_DIR = web
+BUILD_DIR = build
+INSTALL_DIR = /opt/fluid_measurement
+
+# Source files
+SRCS = $(SRC_DIR)/fluid_measurement_server.cpp $(SRC_DIR)/wifi_setup.cpp
+
+# Object files
+OBJS = $(SRCS:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
+
+# Target executable
+TARGET = fluid_measurement_server
+
+# Default target
+all: $(BUILD_DIR)/$(TARGET)
+
+# Create build directory
+$(BUILD_DIR):
+	mkdir -p $(BUILD_DIR)
+
+# Compile source files to object files
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+# Link object files
+$(BUILD_DIR)/$(TARGET): $(OBJS)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIBS)
+
+# Clean build files
+clean:
+	rm -rf $(BUILD_DIR)
+
+# Install the application
+install: $(BUILD_DIR)/$(TARGET)
+	# Create installation directories
+	sudo mkdir -p $(INSTALL_DIR)
+	sudo mkdir -p $(INSTALL_DIR)/web
+	
+	# Copy compiled binary
+	sudo cp $(BUILD_DIR)/$(TARGET) $(INSTALL_DIR)/
+	
+	# Copy web files
+	sudo cp $(WEB_DIR)/* $(INSTALL_DIR)/web/
+	
+	# Copy update script
+	sudo cp scripts/update_checker.sh $(INSTALL_DIR)/
+	sudo chmod +x $(INSTALL_DIR)/update_checker.sh
+	
+	# Copy systemd service file
+	sudo cp fluid-measurement.service /etc/systemd/system/
+	
+	# Reload systemd, enable and start service
+	sudo systemctl daemon-reload
+	sudo systemctl enable fluid-measurement.service
+	sudo systemctl start fluid-measurement.service
+	
+	# Optional: Add update check to daily crontab
+	(crontab -l 2>/dev/null; echo "0 3 * * * $(INSTALL_DIR)/update_checker.sh") | crontab -
+
+# Uninstall the application
+uninstall:
+	# Stop and disable service
+	sudo systemctl stop fluid-measurement.service
+	sudo systemctl disable fluid-measurement.service
+	
+	# Remove installed files
+	sudo rm -rf $(INSTALL_DIR)
+	sudo rm /etc/systemd/system/fluid-measurement.service
+	
+	# Reload systemd
+	sudo systemctl daemon-reload
+
+# Rebuild from scratch
+rebuild: clean all
+
+# Phony targets
+.PHONY: all clean install uninstall rebuild

@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <unistd.h>
 #include <microhttpd.h>
+#include <cstring>  // Added for strcmp function
 
 #define SETUP_PORT 80
 
@@ -45,11 +46,11 @@ static int iterate_post(void *cls, enum MHD_ValueKind kind,
     return MHD_YES;
 }
 
-// Handle setup webpage requests
-static int handle_setup_request(void *cls, struct MHD_Connection *connection,
+// Handle setup webpage requests - updated return type and parameter types
+static MHD_Result handle_setup_request(void *cls, struct MHD_Connection *connection,
                           const char *url, const char *method,
                           const char *version, const char *upload_data,
-                          size_t *upload_data_size, void **con_cls) {
+                          unsigned int *upload_data_size, void **con_cls) {
     
     if (!*con_cls) {
         // First call for this connection
@@ -61,7 +62,7 @@ static int handle_setup_request(void *cls, struct MHD_Connection *connection,
     
     struct ConnectionInfo *info = static_cast<ConnectionInfo*>(*con_cls);
     struct MHD_Response *response;
-    int ret;
+    MHD_Result ret;  // Changed from int to MHD_Result
     
     // Handle POST request
     if (0 == strcmp(method, "POST")) {
@@ -265,10 +266,10 @@ void start_ap_mode() {
     std::cout << "Access point started. SSID: FluidScale-Setup, Password: fluidscale" << std::endl;
     std::cout << "Starting web server for setup..." << std::endl;
     
-    // Start web server for setup
+    // Start web server for setup with proper type casting
     struct MHD_Daemon *daemon = MHD_start_daemon(
         MHD_USE_SELECT_INTERNALLY, SETUP_PORT, NULL, NULL,
-        &handle_setup_request, NULL, 
+        reinterpret_cast<MHD_AccessHandlerCallback>(handle_setup_request), NULL, 
         MHD_OPTION_NOTIFY_COMPLETED, request_completed, NULL,
         MHD_OPTION_END
     );
