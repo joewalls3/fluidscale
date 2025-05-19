@@ -2,7 +2,7 @@
 
 CC = g++
 CFLAGS = -Wall -std=c++17
-LIBS = -lwiringPi -lmicrohttpd -pthread
+LIBS = -lpigpio -lmicrohttpd -pthread
 
 all: fluid_measurement_server
 

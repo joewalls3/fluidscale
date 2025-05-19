@@ -1,5 +1,4 @@
 #include <stdio.h>
-#include <wiringPi.h>
 #include <unistd.h>
 #include <string>
 #include <iostream>
@@ -17,9 +16,9 @@
 // Include WiFi setup functionality
 #include "wifi_setup.h"
 
-// Pin definitions for Raspberry Pi (using wiringPi numbering)
-#define DOUT_PIN 9  // GPIO 5 (Pin 29) in BCM is wiringPi 9
-#define CLK_PIN  6  // GPIO 6 (Pin 31) in BCM is wiringPi 6
+// Pin definitions for Raspberry Pi (using pigpio numbering)
+#define DOUT_PIN 5  // Direct BCM GPIO 5
+#define CLK_PIN  6  // Direct BCM GPIO 6
 #define PORT 8080   // Web server port
 
 // Utility function to replace ends_with
@@ -38,13 +37,17 @@ private:
     
 public:
     HX711(int dout, int clk) : DOUT(dout), CLK(clk) {
-        pinMode(CLK, OUTPUT);
-        pinMode(DOUT, INPUT);
-        digitalWrite(CLK, LOW);
+        gpioSetMode(CLK, PI_OUTPUT);
+        gpioSetMode(DOUT, PI_INPUT);
+        gpioWrite(CLK, 0);
     }
     
+    ~HX711() {
+        // Destructor code here (empty in this case)
+    }
+
     bool is_ready() {
-        return digitalRead(DOUT) == LOW;
+        return gpioRead(DOUT) == 0;
     }
     
     void set_gain(int gain = 128) {
@@ -68,23 +71,23 @@ public:
         
         // Pulse the clock pin 24 times to read data
         for (int i = 0; i < 24; i++) {
-            digitalWrite(CLK, HIGH);
-            delayMicroseconds(1);
-            digitalWrite(CLK, LOW);
-            delayMicroseconds(1);
+            gpioWrite(CLK, 1);
+            gpioDelayMicroseconds(1);
+            gpioWrite(CLK, 0);
+            gpioDelayMicroseconds(1);
             
             value = value << 1;
-            if (digitalRead(DOUT)) {
+            if (gpioRead(DOUT)) {
                 value++;
             }
         }
         
         // Set the gain by pulsing the clock pin additional times
         for (int i = 0; i < GAIN; i++) {
-            digitalWrite(CLK, HIGH);
-            delayMicroseconds(1);
-            digitalWrite(CLK, LOW);
-            delayMicroseconds(1);
+            gpioWrite(CLK, 1);
+            gpioDelayMicroseconds(1);
+            gpioWrite(CLK, 0);
+            gpioDelayMicroseconds(1);
         }
         
         // Convert 24-bit two's complement to signed 32-bit
@@ -119,6 +122,8 @@ public:
     float get_units(int times = 10) {
         return (read_average(times) - OFFSET) / SCALE;
     }
+
+    
 };
 
 // Global variables (PLACE THESE BEFORE ANY FUNCTIONS THAT USE THEM)
@@ -206,6 +211,7 @@ static MHD_Result handle_request(void *cls, struct MHD_Connection *connection,
 }
 
 int main() {
+    
     // Check if Wi-Fi is configured
     if (!is_wifi_configured()) {
         std::cout << "No Wi-Fi configuration found. Starting setup mode..." << std::endl;
@@ -213,9 +219,9 @@ int main() {
         return 0;
     }
     
-    // Initialize wiringPi
-    if (wiringPiSetup() == -1) {
-        std::cerr << "Failed to initialize wiringPi" << std::endl;
+    // Initialize pigpio
+    if (gpioInitialise() == -1) {
+        std::cerr << "Failed to initialize pigpio" << std::endl;
         return 1;
     }
     
@@ -252,5 +258,7 @@ int main() {
     MHD_stop_daemon(daemon);
     delete scale;
     
+    gpioTerminate();
+
     return 0;
 }
