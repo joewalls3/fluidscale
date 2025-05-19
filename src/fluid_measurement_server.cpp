@@ -12,6 +12,7 @@
 #include <fstream>
 #include <cstring>
 #include <algorithm>
+#include <pigpio.h>
 
 // Include WiFi setup functionality
 #include "wifi_setup.h"
