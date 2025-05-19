@@ -72,9 +72,9 @@ public:
         // Pulse the clock pin 24 times to read data
         for (int i = 0; i < 24; i++) {
             gpioWrite(CLK, 1);
-            gpioDelayMicroseconds(1);
+            gpioDelay(1);
             gpioWrite(CLK, 0);
-            gpioDelayMicroseconds(1);
+            gpioDelay(1);
             
             value = value << 1;
             if (gpioRead(DOUT)) {
@@ -85,9 +85,9 @@ public:
         // Set the gain by pulsing the clock pin additional times
         for (int i = 0; i < GAIN; i++) {
             gpioWrite(CLK, 1);
-            gpioDelayMicroseconds(1);
+            gpioDelay(1);
             gpioWrite(CLK, 0);
-            gpioDelayMicroseconds(1);
+            gpioDelay(1);
         }
         
         // Convert 24-bit two's complement to signed 32-bit
